@@ -1,61 +1,90 @@
-#include "raylib.h"
+#include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <stdlib.h>
 
-// Only define this in ONE source file:
-#define RAYGUI_IMPLEMENTATION
-#include "raygui.h"
+int engine_rpm = 1000;
+int target_rpm = 1500;
+pthread_mutex_t lock;
+
+void *status_thread(void *arg)
+{
+    while (1)
+    {
+        pthread_mutex_lock(&lock);
+
+        // Simple “physics”: move engine rpm slowly towards target
+        if (engine_rpm < target_rpm)
+            engine_rpm++;
+        else if (engine_rpm > target_rpm)
+            engine_rpm--;
+
+        // Save cursor position
+        printf("\033[s");
+
+        // Go to row 1, col 1
+        printf("\033[1;1H");
+        printf("Engine running at %4d rpm   \n", engine_rpm);
+        printf("Target speed     %4d rpm   \n", target_rpm);
+
+        // Restore previous cursor position (where user is typing)
+        printf("\033[u");
+
+        fflush(stdout);
+        pthread_mutex_unlock(&lock);
+
+        usleep(100000); // 100 ms
+    }
+    return NULL;
+}
+
+void *input_thread(void *arg)
+{
+    while (1)
+    {
+        int new_speed;
+
+        pthread_mutex_lock(&lock);
+        // Move cursor to line 3, column 1 and print prompt
+        printf("\033[3;1H"); // row 3, col 1¨
+        printf("\033[2K");
+        printf("> Set speed: ");
+        fflush(stdout);
+        pthread_mutex_unlock(&lock);
+
+        if (scanf("%d", &new_speed) == 1)
+        {
+            pthread_mutex_lock(&lock);
+            target_rpm = new_speed;
+            pthread_mutex_unlock(&lock);
+        }
+        else
+        {
+            // Clear invalid input
+            int c;
+            while ((c = getchar()) != '\n' && c != EOF)
+            {
+            }
+        }
+    }
+    return NULL;
+}
 
 int main(void)
 {
-    InitWindow(800, 450, "raylib + raygui example");
-    SetTargetFPS(60);
+    pthread_t t1, t2;
 
-    bool showWindow = true;
-    Rectangle windowRect = { 200, 100, 400, 250 };
-    float sliderValue = 0.5f;
+    // Clear screen and move cursor home
+    printf("\033[2J\033[H");
+    fflush(stdout);
 
-    while (!WindowShouldClose())
-    {
-        BeginDrawing();
-        ClearBackground(RAYWHITE);
+    pthread_mutex_init(&lock, NULL);
 
-        DrawText("Hello from raylib + raygui!", 20, 20, 20, DARKGRAY);
+    pthread_create(&t1, NULL, status_thread, NULL);
+    pthread_create(&t2, NULL, input_thread, NULL);
 
-        if (GuiButton((Rectangle){ 20, 60, 140, 30 }, "Toggle Window"))
-        {
-            showWindow = !showWindow;
-        }
+    pthread_join(t1, NULL);
+    pthread_join(t2, NULL);
 
-        if (showWindow)
-        {
-            if (GuiWindowBox(windowRect, "Demo Window"))
-            {
-                showWindow = false;
-            }
-
-            GuiLabel(
-                (Rectangle){ windowRect.x + 20, windowRect.y + 50, 200, 20 },
-                "This is a label"
-            );
-
-            GuiButton(
-                (Rectangle){ windowRect.x + 20, windowRect.y + 80, 120, 30 },
-                "A Button"
-            );
-
-            sliderValue = GuiSlider(
-                (Rectangle){ windowRect.x + 20, windowRect.y + 130, 200, 20 },
-                "Min",
-                "Max",
-                &sliderValue,
-                0.0f,
-                1.0f
-            );
-
-        }
-
-        EndDrawing();
-    }
-
-    CloseWindow();
     return 0;
 }
