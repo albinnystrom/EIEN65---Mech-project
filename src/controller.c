@@ -146,32 +146,35 @@ void *controller_thread(void *arg)
 
         if (old_target_rpm != target_rpm)
         {
-            // do something
+            send_message(NEW_SPEED);
             old_target_rpm = target_rpm;
         }
-
+        
         if (old_P != P)
         {
-            // do something
+            send_message(NEW_P);
             old_P = P;
         }
-
-        if (old_I != P)
+        
+        if (old_I != I)
         {
-            // do something
-            old_P = P;
+            send_message(NEW_I);
+            old_I = I;
         }
-
-        if (old_D != P)
+        
+        if (old_D != D)
         {
-            // do something
-            old_P = P;
+            send_message(NEW_D);
+            old_D = D;
         }
 
         pthread_mutex_unlock(&lock);
         usleep(200000); // 200ms
     }
 }
+
+int sp;
+int8_t cout;
 
 void *send_message(enum Message msg)
 {
@@ -196,6 +199,9 @@ void *send_message(enum Message msg)
     <- OK              (checksum valid, command accepted & executed)
     <- ERR             (checksum invalid or command rejected)
     */
+
+    sp = serial_init("/dev/ttyS0",0);
+    write(sp,(int8_t)msg,1);
 }
 
 int main(void)
