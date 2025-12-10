@@ -1,38 +1,46 @@
+#include <avr/io.h>
+#include <avr/interrupt.h> //We need these definitions to be able to use interrupts
+#include <util/delay.h>
+
+#define F_CPU 1000000
 #define FOSC 1843200
 #define BAUD 9600
 #define MYUBRR FOSC/16/BAUD-1
 
 int main(void){
-    init_PWM();
-    init_LEDs();
-    init_USART(MYUBRR);
-    
-    for(int i = 0; i < 5; i++) {
-        set_LED(1,1);
-        _delay_ms(200);
-        set_led(1,0);
-        _delay_ms(200);
-    }
-    int sp;
-    int8_t serialin, serialout;
+	init_LEDs();
+	int onoff = 0;
+	for(int i = 0; i < 11; i++) {
+		set_LED(1,onoff);
+		_delay_ms(100);
+		set_LED(2,onoff);
+		_delay_ms(100);
+		set_LED(3,onoff);
+		_delay_ms(250);
+		onoff = !onoff;
+	}
+	init_USART(MYUBRR);
+	//init_PWM();
+	int sp;
+	int8_t serialin, serialout;
 
-    while(true){
-        serialin = USART_Recieve();
-        switch (serialin) {
-            case 1:
-                set_LED(1,1);
-                break;
-            case 2:
-                set_LED(2,1);
-                break;
-            case 3:
-                set_LED(1,0);
-                break;
-            case 4:
-                set_LED(2,0);
-                break;
-        }
-    }
+	while(1){
+		serialin = USART_Recieve();
+		switch (serialin) {
+			case 1:
+			set_LED(1,1);
+			break;
+			case 2:
+			set_LED(2,1);
+			break;
+			case 3:
+			set_LED(1,0);
+			break;
+			case 4:
+			set_LED(2,0);
+			break;
+		}
+	}
 }
 
 int init_PWM(void)
@@ -53,8 +61,10 @@ int updatePWM(int value)
 
 int init_LEDs(void)
 {
-	DDRC |= 0x0F;	// Corresponding pins set as outputs 0b 0000 1111 
-	PORTC &= ~(0x0F);	// Initially all LED pins set to 0
+	DDRB |= 0b11000000;	// Corresponding pins set as outputs 0b 0000 1111
+	DDRD |= 0b00100000;	// Corresponding pins set as outputs 0b 0000 1111
+	PORTB &= ~(0b11000000);	// Initially all LED pins set to 0
+	PORTD &= ~(0b00100000);	// Initially all LED pins set to 0
 	return 1;
 }
 
@@ -65,31 +75,31 @@ int set_LED(int position, int value)
 		case 1:
 		if (value == 0)
 		{
-			PORTC &= ~(1 << 1);
+			PORTB &= ~(1 << 6);
 		}
 		else
 		{
-			PORTC |= (1 << 1);
+			PORTB |= (1 << 6);
 		}
 		break;
 		case 2:
 		if (value == 0)
 		{
-			PORTC &= ~(1 << 2);
+			PORTB &= ~(1 << 7);
 		}
 		else
 		{
-			PORTC |= (1 << 2);
+			PORTB |= (1 << 7);
 		}
 		break;
 		case 3:
 		if (value == 0)
 		{
-			PORTC &= ~(1 << 3);
+			PORTD &= ~(1 << 5);
 		}
 		else
 		{
-			PORTC |= (1 << 3);
+			PORTD |= (1 << 5);
 		}
 		break;
 		
@@ -98,25 +108,25 @@ int set_LED(int position, int value)
 }
 
 void init_USART (unsigned int ubrr) {
-    /*Set baud rate*/
-    UBRR0H = (unsigned char) (ubrr>>8);
-    UBRR0L = (unsigned char)ubrr;
-    
-    /*Enable reciever and transmitter*/
-    USCR0B = (1<<RXEN0) | (1<<TXEN0);
-    
-    /*Set frame format: 8data, 2stop bit*/
-    USCR0C = (1<<USBS0) | (3<<USCZ00);
+	/*Set baud rate*/
+	UBRR0H = (unsigned char) (ubrr>>8);
+	UBRR0L = (unsigned char)ubrr;
+	
+	/*Enable reciever and transmitter*/
+	UCSR0B = (1<<RXEN0) | (1<<TXEN0);
+	
+	/*Set frame format: 8data, 2stop bit*/
+	UCSR0C = (1<<USBS0) | (3<<UCSZ00);
 }
 
 void USART_Transmit(unsigned char data){
-    /* Wait for empty trasmit buffer */
-    while ( !(USCRnA & (1<<UDREn)));
-    UDRn = data;
+	/* Wait for empty trasmit buffer */
+	while ( !(UCSR0A & (1<<UDRE0)));
+	UDR0 = data;
 }
 
 void USART_Recieve(void){
-    /* Wait for empty trasmit buffer */
-    while ( !(USCRnA & (1<<RXCn)));
-    return UDRn;
+	/* Wait for empty trasmit buffer */
+	while ( !(UCSR0A & (1<<RXC0)));
+	return UDR0;
 }
