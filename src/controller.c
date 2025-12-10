@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include "serialport.h"
 
 int engine_rpm = 1000;
 int target_rpm = 1500;
@@ -9,15 +10,17 @@ int P = 10;
 int I = 1;
 int D = 1;
 
-enum Message
+typedef enum Message
 {
     NEW_SPEED,
     NEW_P,
     NEW_I,
     NEW_D,
-};
+} Message;
 
 pthread_mutex_t lock;
+
+void *send_message(Message msg);
 
 void *status_thread(void *arg)
 {
@@ -146,25 +149,29 @@ void *controller_thread(void *arg)
 
         if (old_target_rpm != target_rpm)
         {
-            send_message(NEW_SPEED);
+            Message msg = NEW_SPEED;
+            send_message(msg);
             old_target_rpm = target_rpm;
         }
         
         if (old_P != P)
         {
-            send_message(NEW_P);
+            Message msg = NEW_P;
+            send_message(msg);
             old_P = P;
         }
         
         if (old_I != I)
         {
-            send_message(NEW_I);
+            Message msg = NEW_I;
+            send_message(msg);
             old_I = I;
         }
         
         if (old_D != D)
         {
-            send_message(NEW_D);
+            Message msg = NEW_D;
+            send_message(msg);
             old_D = D;
         }
 
@@ -176,7 +183,7 @@ void *controller_thread(void *arg)
 int sp;
 int8_t cout;
 
-void *send_message(enum Message msg)
+void *send_message(Message msg)
 {
     /*
     PROTOCOL:

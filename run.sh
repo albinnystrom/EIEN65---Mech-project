@@ -1,4 +1,4 @@
 set -euxo pipefail
 
-gcc -pthread src/main.c -o program
+gcc -pthread -o program src/controller.c src/serialport.c 
 ./program
