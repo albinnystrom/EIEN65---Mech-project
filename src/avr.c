@@ -1,47 +1,10 @@
+#define F_CPU 1000000
 #include <avr/io.h>
 #include <avr/interrupt.h> //We need these definitions to be able to use interrupts
 #include <util/delay.h>
 
-#define F_CPU 1000000
-#define FOSC 1843200
-#define BAUD 9600
-#define MYUBRR FOSC/16/BAUD-1
-
-int main(void){
-	init_LEDs();
-	int onoff = 0;
-	for(int i = 0; i < 11; i++) {
-		set_LED(1,onoff);
-		_delay_ms(100);
-		set_LED(2,onoff);
-		_delay_ms(100);
-		set_LED(3,onoff);
-		_delay_ms(250);
-		onoff = !onoff;
-	}
-	init_USART(MYUBRR);
-	//init_PWM();
-	int sp;
-	int8_t serialin, serialout;
-
-	while(1){
-		serialin = USART_Recieve();
-		switch (serialin) {
-			case 1:
-			set_LED(1,1);
-			break;
-			case 2:
-			set_LED(2,1);
-			break;
-			case 3:
-			set_LED(1,0);
-			break;
-			case 4:
-			set_LED(2,0);
-			break;
-		}
-	}
-}
+#define BAUD 2400
+#define MYUBRR ((F_CPU / (16UL * BAUD)) - 1)
 
 int init_PWM(void)
 {
@@ -112,21 +75,91 @@ void init_USART (unsigned int ubrr) {
 	UBRR0H = (unsigned char) (ubrr>>8);
 	UBRR0L = (unsigned char)ubrr;
 	
-	/*Enable reciever and transmitter*/
+	/*Enable receiver and transmitter*/
 	UCSR0B = (1<<RXEN0) | (1<<TXEN0);
 	
-	/*Set frame format: 8data, 2stop bit*/
-	UCSR0C = (1<<USBS0) | (3<<UCSZ00);
+	/*Set frame format: 8data, 1stop bit*/
+	UCSR0C = (1<<USBS0)|(1<<UCSZ00);
+
 }
 
 void USART_Transmit(unsigned char data){
-	/* Wait for empty trasmit buffer */
+	/* Wait for empty transmit buffer */
 	while ( !(UCSR0A & (1<<UDRE0)));
 	UDR0 = data;
 }
 
-void USART_Recieve(void){
-	/* Wait for empty trasmit buffer */
+unsigned char USART_Receive(void){
+	/* Wait for empty transmit buffer */
 	while ( !(UCSR0A & (1<<RXC0)));
 	return UDR0;
+}
+
+int P;
+int I, I_SUM, I_MAX;
+int D;
+int target_speed;
+int last_err;
+
+void init_PID(int p, int i, int d) {
+	P = p;
+	I = i;
+	D = d;
+}
+
+int calc_PID(int value) {
+	/* P */
+	int err = target_speed - value;
+	int u = 1/P * err;
+	
+	/* I */
+	int new_sum = I_SUM + err;
+	/* Anti wind-up*/
+	new_sum = I_SUM > I_MAX ? I_MAX : new_sum;
+	new_sum = I_SUM < -I_MAX ? -I_MAX : new_sum;
+	
+	I_SUM = new_sum;
+	u += 1/I * new_sum;
+	
+	/* D */
+	u += 1/D * (err-last_err);
+	
+	last_err = err;
+	return u;
+}
+
+int main(void){
+	init_LEDs();
+	int onoff = 0;
+	for(int i = 0; i < 5; i++) {
+		set_LED(1,onoff);
+		_delay_ms(100);
+		set_LED(2,onoff);
+		_delay_ms(100);
+		set_LED(3,onoff);
+		_delay_ms(250);
+		onoff = !onoff;
+	}
+	init_USART(MYUBRR);
+	//init_PWM();
+	int sp;
+	unsigned char serialin, serialout;
+
+	while(1){
+		serialin = USART_Receive();
+		serialout = '8';
+		switch (serialin) {
+			case '1': set_LED(1,1); break;
+			case '2':
+			set_LED(2,1);
+			break;
+			case '3':
+			set_LED(1,0);
+			break;
+			case '4':
+			set_LED(2,0);
+			break;
+		}
+		USART_Transmit(serialin);
+	}
 }
