@@ -31,6 +31,12 @@ int init_LEDs(void)
 	return 1;
 }
 
+int led1 = 0;
+
+unsigned char get_LED_1(){
+	return led1 ? '1' : '0';
+}
+
 int set_LED(int position, int value)
 {
 	switch(position)
@@ -38,10 +44,12 @@ int set_LED(int position, int value)
 		case 1:
 		if (value == 0)
 		{
+			led1 = 0;
 			PORTB &= ~(1 << 6);
 		}
 		else
 		{
+			led1 = 1;
 			PORTB |= (1 << 6);
 		}
 		break;
@@ -144,22 +152,36 @@ int main(void){
 	//init_PWM();
 	int sp;
 	unsigned char serialin, serialout;
+	int value = 5;
 
 	while(1){
 		serialin = USART_Receive();
-		serialout = '8';
-		switch (serialin) {
-			case '1': set_LED(1,1); break;
-			case '2':
-			set_LED(2,1);
-			break;
-			case '3':
-			set_LED(1,0);
-			break;
-			case '4':
-			set_LED(2,0);
-			break;
+		switch (serialin)  {
+			case 'L':
+				serialin = USART_Receive();
+				value++;
+				switch (serialin) {
+					case '1':
+						set_LED(1,1);
+						break;
+					case '2':
+						set_LED(2,1);
+						break;
+					case '3':
+						set_LED(1,0);
+						break;
+					case '4':
+						set_LED(2,0);
+						break;
+				}
+				break;
+			case 'G':
+				USART_Receive();
+				USART_Transmit((unsigned char)value);
+				break;
+			default:
+				USART_Transmit('E');
+				break;
 		}
-		USART_Transmit(serialin);
 	}
 }

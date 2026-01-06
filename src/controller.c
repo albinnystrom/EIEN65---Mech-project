@@ -4,11 +4,14 @@
 #include <stdlib.h>
 #include "serialport.h"
 
-int engine_rpm = 1000;
+uint8_t engine_rpm = 1000;
 int target_rpm = 1500;
 int P = 10;
 int I = 1;
 int D = 1;
+int LED = -1;
+int last_recieved = 2;
+unsigned char sent_msg = 0;
 
 typedef enum Message
 {
@@ -16,11 +19,14 @@ typedef enum Message
     NEW_P,
     NEW_I,
     NEW_D,
+    SET_LED,
 } Message;
 
 pthread_mutex_t lock;
 
-void *send_message(Message msg);
+void send_message(unsigned char msg, int value);
+
+uint8_t get_speed();
 
 void *status_thread(void *arg)
 {
@@ -29,10 +35,7 @@ void *status_thread(void *arg)
         pthread_mutex_lock(&lock);
 
         // Simple “physics”: move engine rpm slowly towards target
-        if (engine_rpm < target_rpm)
-            engine_rpm++;
-        else if (engine_rpm > target_rpm)
-            engine_rpm--;
+        engine_rpm = get_speed();
 
         // Save cursor position
         printf("\033[s");
@@ -41,7 +44,7 @@ void *status_thread(void *arg)
         printf("\033[1;1H");
         printf("Engine running at %4d rpm | ", engine_rpm);
         printf("Target speed %4d rpm  | ", target_rpm);
-        printf("P=%d I=%d D=%d", P, I, D);
+        printf("P=%d I=%d D=%d, msg=%d", P, I, D, last_recieved);
 
         // Restore previous cursor position (where user is typing)
         printf("\033[u");
@@ -49,7 +52,7 @@ void *status_thread(void *arg)
         fflush(stdout);
         pthread_mutex_unlock(&lock);
 
-        usleep(100000); // 100 ms
+        usleep(1000000); // 100 ms
     }
     return NULL;
 }
@@ -64,7 +67,7 @@ void *input_thread(void *arg)
         pthread_mutex_lock(&lock);
         printf("\033[2;1H");                // go to row 3, col 1
         printf("\033[2K");                  // clear the line
-        printf(">Command (Speed/P/I/D): "); // prompt (user can type e.g. "Speed 1500")
+        printf(">Command (Speed/P/I/D/L): "); // prompt (user can type e.g. "Speed 1500")
         fflush(stdout);
         pthread_mutex_unlock(&lock);
 
@@ -111,6 +114,14 @@ void *input_thread(void *arg)
             pthread_mutex_unlock(&lock);
             matched = 1;
         }
+        // L <INT>
+        else if (sscanf(line, "L %d", &value) == 1)
+        {
+            pthread_mutex_lock(&lock);
+            LED = value;
+            pthread_mutex_unlock(&lock);
+            matched = 1;
+        }
 
         // Optional: show a tiny feedback / error message on the same line
         pthread_mutex_lock(&lock);
@@ -118,8 +129,8 @@ void *input_thread(void *arg)
         printf("\033[2K"); // clear line again
         if (matched)
         {
+            printf("> OK, LED=%d\n",LED);
             usleep(500000);
-            printf("> OK\n");
         }
         else
         {
@@ -143,6 +154,7 @@ void *controller_thread(void *arg)
     int old_P = -1;
     int old_I = -1;
     int old_D = -1;
+    int old_LED = -1;
     while (1)
     {
         pthread_mutex_lock(&lock);
@@ -150,29 +162,35 @@ void *controller_thread(void *arg)
         if (old_target_rpm != target_rpm)
         {
             Message msg = NEW_SPEED;
-            send_message(msg);
+            send_message('S',target_rpm);
             old_target_rpm = target_rpm;
         }
         
         if (old_P != P)
         {
             Message msg = NEW_P;
-            send_message(msg);
+            send_message('P',P);
             old_P = P;
         }
         
         if (old_I != I)
         {
             Message msg = NEW_I;
-            send_message(msg);
+            send_message('I',I);
             old_I = I;
         }
         
         if (old_D != D)
         {
             Message msg = NEW_D;
-            send_message(msg);
+            send_message('D',D);
             old_D = D;
+        }
+        if (old_LED != LED)
+        {
+            Message msg = SET_LED;
+            send_message('L',LED);
+            old_LED = LED;
         }
 
         pthread_mutex_unlock(&lock);
@@ -182,8 +200,8 @@ void *controller_thread(void *arg)
 
 int sp;
 int8_t cout;
+void send_message(unsigned char msg, int value)
 
-void *send_message(Message msg)
 {
     /*
     PROTOCOL:
@@ -206,14 +224,44 @@ void *send_message(Message msg)
     <- OK              (checksum valid, command accepted & executed)
     <- ERR             (checksum invalid or command rejected)
     */
+    sent_msg = 1;
+    char val = value + '0';
 
-    sp = serial_init("/dev/ttyS0",0);
-    write(sp,(int8_t)msg,1);
+    write(sp,&msg,1);
+    write(sp,&val,1);
+
+    /* Busy-wait until a response is received */
+    int inChar;
+    while(!inChar) {
+        read(sp, &inChar, 1);
+    }
+    last_recieved = inChar;
+}
+
+uint8_t get_speed(){
+    char cmd = 'G';
+    char val = '0';
+
+    write(sp,&cmd,1);
+    write(sp,&val,1);
+
+    /* Busy-wait until a response is received */
+    unsigned char inChar = 0;
+    while(!inChar) {
+        read(sp, &inChar, 1);
+    }
+    return (uint8_t)inChar;
 }
 
 int main(void)
 {
-    pthread_t t1, t2;
+    pthread_t t1, t2, t3;
+
+    sp = serial_init("/dev/ttyS0", 0);
+    if (sp <= 0) {
+        perror("serial_init");
+        return 1;
+    }
 
     // Clear screen and move cursor home
     printf("\033[2J\033[H");
@@ -223,9 +271,11 @@ int main(void)
 
     pthread_create(&t1, NULL, status_thread, NULL);
     pthread_create(&t2, NULL, input_thread, NULL);
+    pthread_create(&t3, NULL, controller_thread, NULL);
 
     pthread_join(t1, NULL);
     pthread_join(t2, NULL);
+    pthread_join(t3, NULL);
 
     return 0;
 }
