@@ -135,6 +135,21 @@ int calc_PID(int value) {
 	last_err = err;
 	return u;
 }
+init_ISR(){
+	sei();
+	PCMSK0 = 1 << PCINT0;
+	PCMSK2 = 1 << PCINT23;
+	
+	PCICR = (1 << PCIE2) | (1 << PCIE0);
+}
+
+ISR(PCINT2_vect){
+	set_LED(2,1);
+}
+
+ISR(PCINT0_vect){
+	set_LED(1,1);
+}
 
 int main(void){
 	init_LEDs();
@@ -148,18 +163,18 @@ int main(void){
 		_delay_ms(250);
 		onoff = !onoff;
 	}
+	init_ISR();
 	init_USART(MYUBRR);
 	//init_PWM();
 	int sp;
 	unsigned char serialin, serialout;
-	int value = 5;
+	int value = 0;
 
 	while(1){
 		serialin = USART_Receive();
 		switch (serialin)  {
 			case 'L':
 				serialin = USART_Receive();
-				value++;
 				switch (serialin) {
 					case '1':
 						set_LED(1,1);
@@ -177,6 +192,8 @@ int main(void){
 				break;
 			case 'G':
 				USART_Receive();
+				value++;
+				value = value%10;
 				USART_Transmit((unsigned char)value);
 				break;
 			default:
