@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "serialport.h"
+#include <time.h>
 
 uint8_t engine_rpm = 1000;
 int target_rpm = 1500;
@@ -44,7 +45,7 @@ void *status_thread(void *arg)
         printf("\033[1;1H");
         printf("Engine running at %4d rpm | ", engine_rpm);
         printf("Target speed %4d rpm  | ", target_rpm);
-        printf("P=%d I=%d D=%d, msg=%d", P, I, D, last_recieved);
+        printf("P=%d I=%d D=%d, msg=%c", P, I, D, last_recieved);
 
         // Restore previous cursor position (where user is typing)
         printf("\033[u");
@@ -52,7 +53,7 @@ void *status_thread(void *arg)
         fflush(stdout);
         pthread_mutex_unlock(&lock);
 
-        usleep(1000000); // 100 ms
+        usleep(100000); // 100 ms
     }
     return NULL;
 }
@@ -247,9 +248,16 @@ uint8_t get_speed(){
 
     /* Busy-wait until a response is received */
     unsigned char inChar = 0;
-    while(!inChar) {
+    time_t start, stop;
+    time(&start);
+    double timediff;
+    last_recieved = 'w';
+    do {
         read(sp, &inChar, 1);
-    }
+        time(&stop);
+        timediff = difftime(stop,start);
+    } while(!inChar &&  timediff < 0.1);
+    last_recieved = 'd';
     return (uint8_t)inChar;
 }
 
